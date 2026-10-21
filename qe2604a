@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition Attendance — QE2604A</title>
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        /* ---------- LOGIN VIEW ---------- */
+        #loginView {
+            display: flex; align-items: center; justify-content: center; min-height: 90vh;
+        }
+        .login-card {
+            background: white; border-radius: 12px; padding: 40px;
+            width: 100%; max-width: 360px; box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+        }
+        .login-card h1 { font-size: 20px; color: #4285f4; margin-bottom: 6px; text-align: center; }
+        .login-card p.sub { color: #888; font-size: 13px; text-align: center; margin-bottom: 24px; }
+        .field { margin-bottom: 16px; }
+        .field label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; }
+        .field input {
+            width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;
+        }
+        .field input:focus { outline: none; border-color: #4285f4; }
+        .login-error {
+            background: #ffebee; border-left: 3px solid #ea4335; color: #c62828;
+            padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 16px; display: none;
+        }
+
+        /* ---------- APP VIEW ---------- */
+        #appView { display: none; }
+
+        .header {
+            background: #4285f4; color: white; padding: 20px; border-radius: 10px;
+            margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 10px;
+        }
+        .header h1 { font-size: 24px; }
+        .header .user-email { font-size: 13px; opacity: 0.85; }
+
+        .camera-box { background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .video-container {
+            position: relative; width: 640px; height: 480px; margin: 0 auto;
+            background: #000; border-radius: 8px; overflow: hidden; max-width: 100%;
+        }
+        video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        video { transform: scaleX(-1); }
+
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0; }
+        .stat-card { background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .stat-value { font-size: 28px; font-weight: bold; color: #4285f4; }
+
+        button {
+            padding: 10px 20px; font-size: 14px; border: none; border-radius: 5px;
+            cursor: pointer; margin: 5px; transition: all 0.3s;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 5px 10px rgba(0,0,0,0.2); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .btn-primary { background: #4285f4; color: white; }
+        .btn-success { background: #34a853; color: white; }
+        .btn-danger  { background: #ea4335; color: white; }
+        .btn-warning { background: #fbbc05; color: black; }
+        .btn-outline { background: white; color: #4285f4; border: 1px solid #4285f4; }
+        .btn-outline-white { background: transparent; color: white; border: 1px solid rgba(255,255,255,0.6); }
+        .btn-outline-white:hover { background: rgba(255,255,255,0.15); }
+
+        .status { padding: 15px; margin: 15px 0; border-radius: 8px; background: #e3f2fd; border-left: 5px solid #4285f4; }
+        .status.success { background: #e8f5e9; border-left-color: #34a853; }
+        .status.error { background: #ffebee; border-left-color: #ea4335; }
+
+        .progress { width: 100%; height: 10px; background: #e0e0e0; border-radius: 5px; margin: 15px 0; overflow: hidden; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #34a853, #4285f4); width: 0%; transition: width 0.3s; }
+
+        .matches { background: white; border-radius: 10px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .match-card {
+            border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 10px 0;
+            display: flex; justify-content: space-between; align-items: center;
+            transition: background 0.2s, border-color 0.2s; cursor: pointer; user-select: none;
+        }
+        .match-card:hover { background: #f5f9ff; border-color: #4285f4; }
+        .match-card.selected { background: #e8f5e9; border-color: #34a853; }
+        .match-card.selected:hover { background: #ddf3df; }
+        .match-card .out-of-frame-tag {
+            font-size: 11px; color: #888; background: #f5f5f5; border-radius: 4px;
+            padding: 2px 6px; margin-left: 8px; vertical-align: middle;
+        }
+        .match-name { font-weight: bold; font-size: 16px; }
+        .match-confidence { color: #666; font-size: 14px; }
+        .checkbox { width: 20px; height: 20px; cursor: pointer; }
+
+        .absentees { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .absentee-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 15px; }
+        .absentee-item { background: #ffebee; padding: 10px; border-radius: 5px; text-align: center; border-left: 3px solid #ea4335; }
+
+        .roster-list { max-height: 400px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; }
+        .roster-row {
+            display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .roster-row:last-child { border-bottom: none; }
+        .roster-name { flex: 1; font-size: 14px; }
+        .roster-badge {
+            font-size: 12px; font-weight: bold; padding: 3px 10px; border-radius: 12px;
+        }
+        .roster-badge.present { background: #e8f5e9; color: #34a853; }
+        .roster-badge.absent { background: #ffebee; color: #ea4335; }
+        .roster-btn { margin: 0; padding: 6px 14px; font-size: 12px; }
+
+        #noMatches { text-align: center; padding: 40px; color: #666; }
+    </style>
+</head>
+<body>
+
+    <!-- ============ LOGIN ============ -->
+    <div id="loginView">
+        <div class="login-card">
+            <h1>🔒 Face Attendance System</h1>
+            <p class="sub">Sign in to take attendance</p>
+            <div id="loginError" class="login-error"></div>
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="email" id="email" placeholder="you@ite.edu.sg" autocomplete="username">
+            </div>
+            <div class="field">
+                <label for="password">Password</label>
+                <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+            </div>
+            <button class="btn-primary" style="width:100%;" id="loginBtn" onclick="handleLogin()">Sign In</button>
+        </div>
+    </div>
+
+    <!-- ============ APP ============ -->
+    <div id="appView">
+        <div class="container">
+            <div class="header">
+                <div>
+                    <h1>📸 Face Recognition Attendance — QE2604A</h1>
+                    <div class="user-email" id="userEmailLabel"></div>
+                </div>
+                <div>
+                    <a class="btn-outline-white" href="https://den-avg.github.io/QE2401T/" style="text-decoration:none; display:inline-block; padding:8px 16px; border-radius:6px;">← Home</a>
+                    <button class="btn-danger" onclick="clearAllAttendance()">Clear All</button>
+                    <button class="btn-outline-white" onclick="handleLogout()">Sign Out</button>
+                </div>
+            </div>
+
+            <!-- Camera Section -->
+            <div class="camera-box">
+                <div class="video-container">
+                    <video id="video" autoplay muted playsinline></video>
+                    <canvas id="canvas"></canvas>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-card"><div class="stat-value" id="faceCount">0</div><div>Faces</div></div>
+                    <div class="stat-card"><div class="stat-value" id="matchCount">0</div><div>Matches</div></div>
+                    <div class="stat-card"><div class="stat-value" id="selectedCount">0</div><div>Selected</div></div>
+                    <div class="stat-card"><div class="stat-value" id="confidence">0%</div><div>Confidence</div></div>
+                </div>
+
+                <div style="text-align: center; margin: 20px 0;">
+                    <button class="btn-primary" onclick="switchCamera()">🔄 Switch Camera</button>
+                    <button class="btn-primary" onclick="toggleCamera()">📹 On/Off</button>
+                    <button class="btn-success" onclick="loadStudents()" id="loadStudentsBtn">📚 Load Students</button>
+                    <button class="btn-success" onclick="startRecognition()">▶️ Start</button>
+                    <button class="btn-warning" onclick="stopRecognition()">⏹️ Stop</button>
+                    <button class="btn-primary" onclick="confirmAttendance()" id="confirmBtn" disabled>✅ Confirm</button>
+                </div>
+
+                <div id="status" class="status">
+                    <span id="statusText">Initializing...</span>
+                    <div class="progress"><div class="progress-bar" id="progressBar"></div></div>
+                    <div id="progressText"></div>
+                </div>
+            </div>
+
+            <!-- Matches Section -->
+            <div class="matches">
+                <h2>✅ Detected Matches</h2>
+                <div style="margin: 10px 0;">
+                    <button class="btn-primary" onclick="selectAll()" id="selectAllBtn" disabled>Select All</button>
+                    <button class="btn-primary" onclick="deselectAll()" id="deselectAllBtn" disabled>Deselect All</button>
+                </div>
+                <div id="matchesList"></div>
+                <div id="noMatches">No matches detected. Start recognition to see matches.</div>
+            </div>
+
+            <!-- Manual Attendance Section -->
+            <div class="absentees">
+                <h2>✏️ Manual Attendance</h2>
+                <p style="color:#888; font-size:13px; margin: 6px 0 14px;">Use this to fix a missed scan or correct a wrong mark — no camera needed.</p>
+                <div id="rosterList" class="roster-list"></div>
+            </div>
+
+            <!-- Absentees Section -->
+            <div class="absentees">
+                <h2>❌ Absent Students</h2>
+                <button class="btn-primary" onclick="refreshAbsentees()" style="margin: 10px 0;">🔄 Refresh</button>
+                <div id="absenteeList" class="absentee-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        "use strict";
+
+        // ============ CONFIG ============
+        // Same values as archive.html. The anon key is safe to expose —
+        // Row Level Security on students/archive_attendance/storage.objects
+        // is the real access control, gated behind the authenticated role.
+        const SUPABASE_URL      = "https://xxxxx.supabase.co";
+        const SUPABASE_ANON_KEY = "PASTE_YOUR_ANON_PUBLIC_KEY_HERE";
+        const STORAGE_BUCKET    = "students-photo-qe2604a";
+        const CLASS_NAME        = "QE2604A";
+
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // ============ DOM ============
+        const loginView   = document.getElementById('loginView');
+        const appView     = document.getElementById('appView');
+        const loginError  = document.getElementById('loginError');
+        const loginBtn    = document.getElementById('loginBtn');
+        const userEmailLabel = document.getElementById('userEmailLabel');
+
+        const video      = document.getElementById('video');
+        const canvas     = document.getElementById('canvas');
+        const ctx        = canvas.getContext('2d');
+
+        const statusText    = document.getElementById('statusText');
+        const progressBar   = document.getElementById('progressBar');
+        const progressText  = document.getElementById('progressText');
+        const faceCountEl   = document.getElementById('faceCount');
+        const matchCountEl  = document.getElementById('matchCount');
+        const selectedCountEl = document.getElementById('selectedCount');
+        const confidenceEl  = document.getElementById('confidence');
+        const confirmBtn    = document.getElementById('confirmBtn');
+        const selectAllBtn  = document.getElementById('selectAllBtn');
+        const deselectAllBtn= document.getElementById('deselectAllBtn');
+        const matchesList   = document.getElementById('matchesList');
+        const noMatches      = document.getElementById('noMatches');
+        const absenteeList   = document.getElementById('absenteeList');
+        const loadStudentsBtn = document.getElementById('loadStudentsBtn');
+
+        let stream = null, isCameraOn = true, isRecognizing = false;
+        let currentFacingMode = 'user', recognitionTimer = null;
+        let labeledDescriptors = [], faceMatcher = null;
+        let allDetectedMatches = [], selectedMatches = new Set();
+
+        // ============ AUTH ============
+        async function handleLogin() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            if (!email || !password) { showLoginError('Enter both email and password.'); return; }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = 'Signing in...';
+            loginError.style.display = 'none';
+
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In';
+
+            if (error) {
+                showLoginError(error.message === 'Invalid login credentials' ? 'Incorrect email or password.' : error.message);
+                return;
+            }
+            enterApp(data.session.user);
+        }
+
+        function showLoginError(msg) {
+            loginError.textContent = msg;
+            loginError.style.display = 'block';
+        }
+
+        async function handleLogout() {
+            stopCamera();
+            stopRecognition();
+            await supabaseClient.auth.signOut();
+            appView.style.display = 'none';
+            loginView.style.display = 'flex';
+            document.getElementById('password').value = '';
+        }
+
+        async function enterApp(user) {
+            loginView.style.display = 'none';
+            appView.style.display = 'block';
+            userEmailLabel.textContent = user.email;
+            await init();
+        }
+
+        async function checkExistingSession() {
+            const { data } = await supabaseClient.auth.getSession();
+            if (data.session) {
+                await enterApp(data.session.user);
+            }
+        }
+        window.addEventListener('DOMContentLoaded', checkExistingSession);
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('password').addEventListener('keydown', e => {
+                if (e.key === 'Enter') handleLogin();
+            });
+        });
+
+        // ============ APP INIT ============
+        async function init() {
+            updateStatus('Initializing...');
+            await loadModels();
+            await startCamera();
+            await loadAbsentees();
+            await loadRoster();
+            updateStatus('Ready! Click "Load Students" to begin.', 'success');
+        }
+
+        function updateStatus(message, type) {
+            statusText.innerHTML = message;
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = 'status';
+            if (type) statusDiv.classList.add(type);
+        }
+
+        function updateProgress(current, total, text) {
+            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+            progressBar.style.width = percent + '%';
+            progressText.innerHTML = text ? text : current + '/' + total + ' (' + percent + '%)';
+        }
+
+        // ============ MODEL LOADING ============
+        async function loadModels() {
+            try {
+                updateStatus('Loading face detection models...');
+                const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+                await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+                await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+                updateStatus('Models loaded!', 'success');
+            } catch (error) {
+                updateStatus('Error loading models: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
+        // ============ CAMERA ============
+        async function startCamera() {
+            try {
+                if (stream) stream.getTracks().forEach(t => t.stop());
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480, facingMode: currentFacingMode }
+                });
+                video.srcObject = stream;
+                isCameraOn = true;
+                await new Promise(resolve => {
+                    video.onloadedmetadata = () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+            } catch (error) {
+                updateStatus('Camera error: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+                video.srcObject = null;
+                isCameraOn = false;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function toggleCamera() { isCameraOn ? stopCamera() : startCamera(); }
+        async function switchCamera() {
+            currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            await startCamera();
+        }
+
+        // ============ LOAD STUDENTS ============
+        // Roster + photos now come straight from Supabase — no cache layer
+        // needed, since Postgres reads are fast and signed URLs are cheap
+        // to generate. Each photo is loaded directly into an <img> element
+        // via its signed URL; face-api reads pixels straight off that,
+        // skipping the base64-encode-and-cache pipeline entirely.
+        async function loadStudents() {
+            if (loadStudentsBtn.disabled) return;
+            loadStudentsBtn.disabled = true;
+            updateStatus('Loading student roster...');
+            labeledDescriptors = [];
+            allDetectedMatches = [];
+            selectedMatches.clear();
+            renderMatchList();
+
+            try {
+                const { data: students, error } = await supabaseClient
+                    .from('students')
+                    .select('name, photo_path')
+                    .eq('class', CLASS_NAME)
+                    .order('name');
+
+                if (error) throw error;
+                if (!students || students.length === 0) {
+                    updateStatus('❌ No students found in the students table.', 'error');
+                    return;
+                }
+
+                updateStatus('✅ Found ' + students.length + ' students. Processing faces...', 'success');
+                await processStudentFaces(students);
+
+            } catch (err) {
+                updateStatus('Error loading students: ' + err.message, 'error');
+            } finally {
+                loadStudentsBtn.disabled = false;
+            }
+        }
+
+        async function processStudentFaces(students) {
+            labeledDescriptors = [];
+
+            for (let i = 0; i < students.length; i++) {
+                const student = students[i];
+                updateProgress(i + 1, students.length, 'Detecting face: ' + student.name + '...');
+
+                try {
+                    // Signed URL, valid 1 hour — regenerated fresh on every
+                    // "Load Students" click, so it's never stale mid-session.
+                    const { data: signed, error: signErr } = await supabaseClient
+                        .storage
+                        .from(STORAGE_BUCKET)
+                        .createSignedUrl(student.photo_path, 3600);
+
+                    if (signErr || !signed) {
+                        console.log('❌ Could not get photo URL for: ' + student.name + (signErr ? ' — ' + signErr.message : ''));
+                        continue;
+                    }
+
+                    const img = await loadImageFromUrl(signed.signedUrl);
+                    const detection = await faceapi
+                        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+                        .withFaceLandmarks()
+                        .withFaceDescriptor();
+
+                    if (detection) {
+                        labeledDescriptors.push(new faceapi.LabeledFaceDescriptors(student.name, [detection.descriptor]));
+                        console.log('✅ Loaded face for: ' + student.name);
+                    } else {
+                        console.log('❌ No face detected in: ' + student.name);
+                    }
+                } catch (e) {
+                    console.log('Failed to process ' + student.name + ': ' + e.message);
+                }
+            }
+
+            if (labeledDescriptors.length > 0) {
+                faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6);
+                updateStatus('✅ Loaded ' + labeledDescriptors.length + ' student faces', 'success');
+            } else {
+                updateStatus('❌ No faces could be detected in the images', 'error');
+            }
+            progressBar.style.width = '0%';
+            progressText.innerHTML = '';
+        }
+
+        function loadImageFromUrl(url) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous'; // needed: this is a real cross-origin fetch now, unlike the old base64 data: URIs
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = url;
+            });
+        }
+
+        // ============ FACE RECOGNITION ============
+        async function startRecognition() {
+            if (!faceMatcher) { updateStatus('Please load students first', 'error'); return; }
+            if (!isCameraOn) { updateStatus('Please turn on camera first', 'error'); return; }
+            isRecognizing = true;
+            updateStatus('Recognition active...', 'success');
+            recognizeLoop();
+        }
+
+        function stopRecognition() {
+            isRecognizing = false;
+            allDetectedMatches = [];
+            if (recognitionTimer) clearTimeout(recognitionTimer);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            updateStatus('Recognition stopped');
+            renderMatchList();
+        }
+
+        async function recognizeLoop() {
+            if (!isRecognizing) return;
+            try {
+                const detections = await faceapi
+                    .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions())
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
+
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                const frameMatches = [];
+                for (const detection of detections) {
+                    const match = faceMatcher.findBestMatch(detection.descriptor);
+                    if (match.label !== 'unknown' && match.distance < 0.6) {
+                        frameMatches.push({ name: match.label, confidence: 1 - match.distance, detection, inFrame: true });
+                    }
+                }
+
+                for (const m of frameMatches) {
+                    const existing = allDetectedMatches.find(x => x.name === m.name);
+                    if (!existing) {
+                        allDetectedMatches.push({ ...m });
+                    } else {
+                        existing.confidence = m.confidence;
+                        existing.inFrame = true;
+                        existing.detection = m.detection;
+                    }
+                }
+
+                const frameNames = new Set(frameMatches.map(m => m.name));
+                for (const entry of allDetectedMatches) {
+                    if (!frameNames.has(entry.name)) entry.inFrame = false;
+                }
+
+                allDetectedMatches = allDetectedMatches.filter(entry => entry.inFrame || selectedMatches.has(entry.name));
+
+                renderMatchList();
+                drawFaceBoxes(frameMatches);
+
+                faceCountEl.innerHTML = detections.length;
+                matchCountEl.innerHTML = allDetectedMatches.length;
+
+                if (frameMatches.length > 0) {
+                    const avg = frameMatches.reduce((s, m) => s + m.confidence, 0) / frameMatches.length;
+                    confidenceEl.innerHTML = Math.round(avg * 100) + '%';
+                } else {
+                    confidenceEl.innerHTML = '0%';
+                }
+            } catch (error) {
+                console.error('Recognition error:', error);
+            }
+            recognitionTimer = setTimeout(recognizeLoop, 300);
+        }
+
+        function drawFaceBoxes(matches) {
+            const displaySize = { width: video.width, height: video.height };
+            const resized = faceapi.resizeResults(matches.map(m => m.detection), displaySize);
+            faceapi.draw.drawDetections(canvas, resized);
+
+            for (let i = 0; i < matches.length; i++) {
+                if (!resized[i]) continue;
+                const match = matches[i];
+                const box = resized[i].detection.box;
+                const isSelected = selectedMatches.has(match.name);
+                new faceapi.draw.DrawBox(box, {
+                    label: match.name + ' (' + Math.round(match.confidence * 100) + '%)',
+                    boxColor: isSelected ? '#34a853' : '#4285f4'
+                }).draw(canvas);
+            }
+        }
+
+        // ============ MATCHES UI ============
+        function renderMatchList() {
+            if (allDetectedMatches.length === 0) {
+                noMatches.style.display = 'block';
+                matchesList.innerHTML = '';
+                confirmBtn.disabled = true;
+                selectAllBtn.disabled = true;
+                deselectAllBtn.disabled = true;
+                return;
+            }
+            noMatches.style.display = 'none';
+
+            let html = '';
+            for (const match of allDetectedMatches) {
+                const isSelected = selectedMatches.has(match.name);
+                const escapedName = match.name.replace(/'/g, "\\'");
+                const tag = (!match.inFrame && isSelected) ? '<span class="out-of-frame-tag">not in frame</span>' : '';
+                html += `
+                  <div class="match-card ${isSelected ? 'selected' : ''}" onclick="toggleSelect('${escapedName}', ${!isSelected})">
+                    <div>
+                      <div class="match-name">${match.name}${tag}</div>
+                      <div class="match-confidence">${Math.round(match.confidence * 100)}% confidence</div>
+                    </div>
+                    <div>
+                      <input type="checkbox" class="checkbox" ${isSelected ? 'checked' : ''}
+                             onclick="event.stopPropagation()"
+                             onchange="toggleSelect('${escapedName}', this.checked)">
+                    </div>
+                  </div>`;
+            }
+            matchesList.innerHTML = html;
+            confirmBtn.disabled = selectedMatches.size === 0;
+            selectAllBtn.disabled = false;
+            deselectAllBtn.disabled = selectedMatches.size === 0;
+            selectedCountEl.innerHTML = selectedMatches.size;
+        }
+
+        function toggleSelect(name, checked) {
+            if (checked) {
+                selectedMatches.add(name);
+            } else {
+                selectedMatches.delete(name);
+                const entry = allDetectedMatches.find(x => x.name === name);
+                if (entry && !entry.inFrame) allDetectedMatches = allDetectedMatches.filter(x => x.name !== name);
+            }
+            selectedCountEl.innerHTML = selectedMatches.size;
+            confirmBtn.disabled = selectedMatches.size === 0;
+            deselectAllBtn.disabled = selectedMatches.size === 0;
+            renderMatchList();
+        }
+
+        function selectAll() {
+            for (const m of allDetectedMatches) selectedMatches.add(m.name);
+            selectedCountEl.innerHTML = selectedMatches.size;
+            confirmBtn.disabled = false;
+            deselectAllBtn.disabled = false;
+            renderMatchList();
+        }
+
+        function deselectAll() {
+            selectedMatches.clear();
+            allDetectedMatches = allDetectedMatches.filter(entry => entry.inFrame);
+            selectedCountEl.innerHTML = '0';
+            confirmBtn.disabled = true;
+            deselectAllBtn.disabled = true;
+            renderMatchList();
+        }
+
+        // ============ ATTENDANCE ============
+        async function confirmAttendance() {
+            if (confirmBtn.disabled) return; // already processing — ignore extra clicks
+            if (selectedMatches.size === 0) { updateStatus('No students selected', 'error'); return; }
+            const names = [...selectedMatches];
+            confirmBtn.disabled = true;
+            updateStatus('Marking attendance for ' + names.length + ' students...');
+
+            try {
+                const now = new Date();
+                const { error: updateErr } = await supabaseClient
+                    .from('students')
+                    .update({ status: 'Present', last_attendance: now.toISOString() })
+                    .in('name', names)
+                    .eq('class', CLASS_NAME); // scoped so a same-named student in another class is never touched
+
+                if (updateErr) throw updateErr;
+
+                // Mirror into the archive table the same way the old Apps
+                // Script pushArchiveToSupabase() did.
+                const dateStr = now.toLocaleDateString('en-GB'); // dd/mm/yyyy
+                const timeStr = now.toLocaleTimeString('en-GB'); // HH:mm:ss
+                const archiveRows = names.map(name => ({ name, date: dateStr, time: timeStr, class: CLASS_NAME }));
+                const { error: archiveErr } = await supabaseClient.from('archive_attendance').insert(archiveRows);
+                if (archiveErr) console.error('Archive insert failed (attendance itself still recorded):', archiveErr.message);
+
+                updateStatus('✅ Marked ' + names.length + ' student(s) present', 'success');
+                allDetectedMatches = [];
+                selectedMatches.clear();
+                selectedCountEl.innerHTML = '0';
+                renderMatchList();
+                loadAbsentees();
+                loadRoster();
+            } catch (err) {
+                updateStatus('❌ ' + err.message, 'error');
+                confirmBtn.disabled = false; // let them retry after a real failure
+            }
+        }
+
+        async function clearAllAttendance() {
+            if (!confirm('Clear all attendance marks? This also logs one completed lesson for reporting.')) return;
+            updateStatus('Clearing attendance...');
+            try {
+                const { error } = await supabaseClient
+                    .from('students')
+                    .update({ status: '', last_attendance: null })
+                    .eq('class', CLASS_NAME); // only this class's roster
+                if (error) throw error;
+
+                // Every Clear All = one completed lesson, for the at-risk
+                // attendance report. This is a plain count, not inferred —
+                // logged explicitly at the moment you reset for the next class.
+                const { error: lessonErr } = await supabaseClient
+                    .from('lesson_sessions')
+                    .insert({ class: CLASS_NAME });
+                if (lessonErr) console.error('Lesson session log failed (attendance clear still succeeded):', lessonErr.message);
+
+                updateStatus('Cleared all attendance marks — lesson logged', 'success');
+                loadAbsentees();
+                loadRoster();
+            } catch (err) {
+                updateStatus('❌ ' + err.message, 'error');
+            }
+        }
+
+        // ============ MANUAL MARK / UNMARK ============
+        // For fixing recognition misses or wrongly-marked students without
+        // needing the camera. "Mark Present" behaves exactly like a camera
+        // confirm for one student — updates status AND logs an archive row.
+        // "Unmark" reverses status AND removes today's archive row for that
+        // student, so the record stays consistent rather than leaving a
+        // phantom "present" entry after a correction.
+        async function markPresentManually(name) {
+            try {
+                const now = new Date();
+                const { error: updateErr } = await supabaseClient
+                    .from('students')
+                    .update({ status: 'Present', last_attendance: now.toISOString() })
+                    .eq('name', name)
+                    .eq('class', CLASS_NAME);
+                if (updateErr) throw updateErr;
+
+                const dateStr = now.toLocaleDateString('en-GB');
+                const timeStr = now.toLocaleTimeString('en-GB');
+                const { error: archiveErr } = await supabaseClient
+                    .from('archive_attendance')
+                    .insert({ name, date: dateStr, time: timeStr, class: CLASS_NAME });
+                if (archiveErr) console.error('Archive insert failed (status still updated):', archiveErr.message);
+
+                updateStatus('✅ Manually marked ' + name + ' present', 'success');
+                loadAbsentees();
+                loadRoster();
+            } catch (err) {
+                updateStatus('❌ ' + err.message, 'error');
+            }
+        }
+
+        async function unmarkPresent(name) {
+            try {
+                const { error: updateErr } = await supabaseClient
+                    .from('students')
+                    .update({ status: '', last_attendance: null })
+                    .eq('name', name)
+                    .eq('class', CLASS_NAME);
+                if (updateErr) throw updateErr;
+
+                // Remove today's archive entry for this student only —
+                // leaves prior days' history untouched.
+                const todayStr = new Date().toLocaleDateString('en-GB');
+                const { error: deleteErr } = await supabaseClient
+                    .from('archive_attendance')
+                    .delete()
+                    .eq('name', name)
+                    .eq('class', CLASS_NAME)
+                    .eq('date', todayStr);
+                if (deleteErr) console.error('Archive cleanup failed (status still corrected):', deleteErr.message);
+
+                updateStatus('Unmarked ' + name, 'success');
+                loadAbsentees();
+                loadRoster();
+            } catch (err) {
+                updateStatus('❌ ' + err.message, 'error');
+            }
+        }
+
+        // Full roster with live status, for the manual-mark panel.
+        async function loadRoster() {
+            const rosterList = document.getElementById('rosterList');
+            if (!rosterList) return;
+            try {
+                const { data, error } = await supabaseClient
+                    .from('students')
+                    .select('name, status')
+                    .eq('class', CLASS_NAME)
+                    .order('name');
+                if (error) throw error;
+
+                rosterList.innerHTML = (data || []).map(s => {
+                    const isPresent = s.status === 'Present';
+                    const escapedName = s.name.replace(/'/g, "\\'");
+                    return `
+                      <div class="roster-row">
+                        <span class="roster-name">${s.name}</span>
+                        <span class="roster-badge ${isPresent ? 'present' : 'absent'}">${isPresent ? 'Present' : 'Absent'}</span>
+                        ${isPresent
+                            ? `<button class="btn-warning roster-btn" onclick="unmarkPresent('${escapedName}')">Unmark</button>`
+                            : `<button class="btn-success roster-btn" onclick="markPresentManually('${escapedName}')">Mark Present</button>`}
+                      </div>`;
+                }).join('');
+            } catch (err) {
+                console.error('Failed to load roster:', err);
+            }
+        }
+
+        // ============ ABSENTEES ============
+        async function loadAbsentees() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('students')
+                    .select('name')
+                    .eq('class', CLASS_NAME)
+                    .or('status.is.null,status.neq.Present');
+
+                if (error) throw error;
+
+                if (!data || data.length === 0) {
+                    absenteeList.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;">🎉 All students present!</div>';
+                } else {
+                    absenteeList.innerHTML = data.map(s => `<div class="absentee-item">${s.name}</div>`).join('');
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function refreshAbsentees() { loadAbsentees(); }
+
+
+        // ============ ABSENTEES ============
+        async function loadAbsentees() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('students')
+                    .select('name')
+                    .eq('class', CLASS_NAME)
+                    .or('status.is.null,status.neq.Present');
+
+                if (error) throw error;
+
+                if (!data || data.length === 0) {
+                    absenteeList.innerHTML = '<div style="grid-column:1/-1;padding:20px;text-align:center;">🎉 All students present!</div>';
+                } else {
+                    absenteeList.innerHTML = data.map(s => `<div class="absentee-item">${s.name}</div>`).join('');
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function refreshAbsentees() { loadAbsentees(); }
+
+        // Expose to global scope
+        window.handleLogin = handleLogin;
+        window.handleLogout = handleLogout;
+        window.switchCamera = switchCamera;
+        window.toggleCamera = toggleCamera;
+        window.loadStudents = loadStudents;
+        window.startRecognition = startRecognition;
+        window.stopRecognition = stopRecognition;
+        window.confirmAttendance = confirmAttendance;
+        window.clearAllAttendance = clearAllAttendance;
+        window.selectAll = selectAll;
+        window.deselectAll = deselectAll;
+        window.refreshAbsentees = refreshAbsentees;
+        window.toggleSelect = toggleSelect;
+        window.markPresentManually = markPresentManually;
+        window.unmarkPresent = unmarkPresent;
+        window.loadRoster = loadRoster;
+    </script>
+</body>
+</html>
